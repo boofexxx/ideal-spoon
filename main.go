@@ -56,18 +56,23 @@ func (mux *Server) saveFile(fileIn multipart.File, path string) error {
 
 func (mux *Server) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(64 * MB); err != nil {
-		http.Error(w, fmt.Sprintf("expected multipart form: %v", err), http.StatusBadRequest)
+		errStr := fmt.Sprintf("expected multipart form: %v", err)
+		log.Print(errStr)
+		http.Error(w, errStr, http.StatusBadRequest)
 		return
 	}
 	f, fh, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("couldn't form file: %v", err), http.StatusBadRequest)
+		errStr := fmt.Sprintf("couldn't form file: %v", err)
+		log.Print(errStr)
+		http.Error(w, errStr, http.StatusBadRequest)
 		return
 	}
-
 	path := mux.dirName + string(os.PathSeparator) + fh.Filename
 	if err = mux.saveFile(f, path); err != nil {
-		http.Error(w, fmt.Sprintf("couldn't save file: %v", err), http.StatusInternalServerError)
+		errStr := fmt.Sprintf("couldn't save file: %v", err)
+		log.Print(errStr)
+		http.Error(w, errStr, http.StatusInternalServerError)
 		return
 	}
 	w.Write([]byte(path + " saved"))
@@ -103,7 +108,9 @@ func (mux *Server) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	path := mux.dirName + string(os.PathSeparator) + r.FormValue("file")
 	buff, err := mux.collectFiles(path)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Couldn't collect files: %v", err), http.StatusInternalServerError)
+		errStr := fmt.Sprintf("couldn't collect files: %v", err)
+		log.Print(errStr)
+		http.Error(w, errStr, http.StatusInternalServerError)
 		return
 	}
 	w.Write(buff)
@@ -119,7 +126,7 @@ func main() {
 
 	err := os.Mkdir(mux.dirName, os.ModePerm)
 	if err != nil && !errors.Is(err, os.ErrExist) {
-		log.Fatalf("Couldn't create directory %s: %v", mux.dirName, err)
+		log.Fatalf("couldn't create directory %s: %v", mux.dirName, err)
 	}
 
 	mux.HandleFunc("/upload", mux.uploadHandler)
