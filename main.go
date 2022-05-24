@@ -83,6 +83,9 @@ func (mux *Server) collectFiles(path string) ([]byte, error) {
 		f, err := fs.Open(strconv.Itoa(i))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
+				if len(out) == 0 {
+					return nil, err
+				}
 				return bytes.TrimRight(out, "\x00"), nil
 			}
 			return nil, err
