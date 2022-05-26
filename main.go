@@ -2,14 +2,14 @@ package main
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/boofexxx/errors"
 )
 
 const (
@@ -17,15 +17,16 @@ const (
 )
 
 func (mux *Server) saveFile(fileIn multipart.File, path string) error {
+	op := errors.Op("Server.saveFile")
 	log.Printf("creating %s\n", path)
 	err := os.Mkdir(path, os.ModePerm)
 	if err != nil {
 		if !errors.Is(err, os.ErrExist) {
-			return err
+			return errors.E(err, op)
 		}
 		log.Printf("%s already exists. removing", path)
 		if err = os.RemoveAll(path); err != nil {
-			return err
+			return errors.E(err, op)
 		}
 		return mux.saveFile(fileIn, path)
 	}
@@ -37,16 +38,16 @@ func (mux *Server) saveFile(fileIn multipart.File, path string) error {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return err
+			return errors.E(err, op)
 		}
 		filePath := path + string(os.PathSeparator) + strconv.Itoa(i)
 		log.Printf("creating %s\n", filePath)
 		fileOut, err := os.Create(filePath)
 		if err != nil {
-			return err
+			return errors.E(err, op)
 		}
 		if _, err = fileOut.Write(buff); err != nil {
-			return err
+			return errors.E(err, op)
 		}
 		fileOut.Close()
 		buff = make([]byte, MB)
@@ -55,30 +56,32 @@ func (mux *Server) saveFile(fileIn multipart.File, path string) error {
 }
 
 func (mux *Server) uploadHandler(w http.ResponseWriter, r *http.Request) {
+	op := errors.Op("Server.uploadHandler")
 	if err := r.ParseMultipartForm(64 * MB); err != nil {
-		errStr := fmt.Sprintf("expected multipart form: %v", err)
-		log.Print(errStr)
-		http.Error(w, errStr, http.StatusBadRequest)
+		err = errors.E(op, err, "parse multipart form")
+		http.Error(w, errors.Innermost(err).Error(), http.StatusBadRequest)
+		log.Print(err)
 		return
 	}
 	f, fh, err := r.FormFile("file")
 	if err != nil {
-		errStr := fmt.Sprintf("couldn't form file: %v", err)
-		log.Print(errStr)
-		http.Error(w, errStr, http.StatusBadRequest)
+		err = errors.E(op, err, "form file")
+		http.Error(w, errors.Innermost(err).Error(), http.StatusBadRequest)
+		log.Print(err)
 		return
 	}
 	path := mux.dirName + string(os.PathSeparator) + fh.Filename
 	if err = mux.saveFile(f, path); err != nil {
-		errStr := fmt.Sprintf("couldn't save file: %v", err)
-		log.Print(errStr)
-		http.Error(w, errStr, http.StatusInternalServerError)
+		err = errors.E(err, op)
+		http.Error(w, errors.Innermost(err).Error(), http.StatusInternalServerError)
+		log.Print(err)
 		return
 	}
 	w.Write([]byte(path + " saved"))
 }
 
 func (mux *Server) collectFiles(path string) ([]byte, error) {
+	op := errors.Op("Server.collectFiles")
 	fs := os.DirFS(path)
 	// probably we could count number of files and preallocate expected number of bytes
 	out := make([]byte, 0)
@@ -89,11 +92,11 @@ func (mux *Server) collectFiles(path string) ([]byte, error) {
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				if len(out) == 0 {
-					return nil, err
+					return nil, errors.E(err, op)
 				}
 				return bytes.TrimRight(out, "\x00"), nil
 			}
-			return nil, err
+			return nil, errors.E(err, op)
 		}
 
 		_, err = f.Read(buf)
@@ -105,12 +108,13 @@ func (mux *Server) collectFiles(path string) ([]byte, error) {
 }
 
 func (mux *Server) downloadHandler(w http.ResponseWriter, r *http.Request) {
+	op := errors.Op("Server.downloadHandler")
 	path := mux.dirName + string(os.PathSeparator) + r.FormValue("file")
 	buff, err := mux.collectFiles(path)
 	if err != nil {
-		errStr := fmt.Sprintf("couldn't collect files: %v", err)
-		log.Print(errStr)
-		http.Error(w, errStr, http.StatusInternalServerError)
+		err = errors.E(op, err)
+		http.Error(w, errors.Innermost(err).Error(), http.StatusInternalServerError)
+		log.Print(err)
 		return
 	}
 	w.Write(buff)
